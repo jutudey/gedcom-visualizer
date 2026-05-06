@@ -1,0 +1,1356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Ancestor Tree</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root{
+    --bg:        oklch(0.985 0.004 85);
+    --panel:     oklch(0.995 0.003 85);
+    --ink:       oklch(0.22 0.01 80);
+    --ink-soft:  oklch(0.45 0.01 80);
+    --ink-faint: oklch(0.62 0.01 80);
+    --rule:      oklch(0.88 0.008 80);
+    --rule-soft: oklch(0.93 0.006 80);
+    --card:      oklch(0.995 0.003 85);
+    --card-bd:   oklch(0.83 0.01 80);
+    --hairline:  oklch(0.72 0.012 80);
+    --accent:    oklch(0.55 0.12 250);
+    --accent-soft: oklch(0.94 0.03 250);
+    --male-tint:  oklch(0.97 0.022 235);
+    --female-tint: oklch(0.97 0.022 25);
+    --proband:   oklch(0.55 0.13 145);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);font:13px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-feature-settings:"ss01","cv11"}
+  button,input,select{font:inherit;color:inherit}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:oklch(0.85 0.01 80);border-radius:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  #app{display:grid;grid-template-columns:1fr 280px;height:100vh;width:100vw;overflow:hidden}
+
+  /* ---------- canvas area ---------- */
+  #stage{position:relative;overflow:hidden;background:
+    radial-gradient(circle at 1px 1px, oklch(0.9 0.005 80) 1px, transparent 1px) 0 0/24px 24px,
+    var(--bg);
+    cursor:grab}
+  #stage.panning{cursor:grabbing}
+  #viewport{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+  svg.tree{display:block;overflow:visible;background:transparent}
+
+  /* ---------- top status bar ---------- */
+  #topbar{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:center;pointer-events:none;z-index:5}
+  .pill{pointer-events:auto;background:var(--panel);border:1px solid var(--rule);border-radius:999px;padding:6px 12px;display:inline-flex;gap:8px;align-items:center;color:var(--ink-soft)}
+  .pill b{color:var(--ink);font-weight:600}
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:var(--proband)}
+  .topbar-spacer{flex:1}
+  .iconbtn{pointer-events:auto;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--ink-soft);display:inline-flex;align-items:center;gap:6px}
+  .iconbtn:hover{color:var(--ink);border-color:var(--hairline)}
+
+  /* ---------- empty state / dropzone ---------- */
+  #drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:20}
+  #drop.hidden{display:none}
+  #drop.over .dz{border-color:var(--accent);background:var(--accent-soft)}
+  .dz{width:min(520px,84vw);padding:40px;border:1.5px dashed var(--card-bd);border-radius:14px;background:var(--panel);text-align:center}
+  .dz h1{margin:0 0 6px;font-size:18px;font-weight:600;letter-spacing:-0.01em}
+  .dz p{margin:0 0 18px;color:var(--ink-soft);font-size:13px}
+  .dz .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid var(--card-bd);background:var(--panel);color:var(--ink);cursor:pointer;font-weight:500}
+  .btn:hover{border-color:var(--hairline)}
+  .btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .btn.primary:hover{background:oklch(0.32 0.01 80)}
+  .btn.ghost{background:transparent;border-color:var(--rule)}
+  .hint{margin-top:14px;font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.08em}
+
+  /* ---------- sidebar ---------- */
+  aside{border-left:1px solid var(--rule);background:var(--panel);overflow-y:auto;display:flex;flex-direction:column}
+  aside header{padding:14px 16px 10px;border-bottom:1px solid var(--rule-soft)}
+  aside h2{margin:0;font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-soft)}
+  .file-meta{margin-top:6px;font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+  .section{padding:14px 16px;border-bottom:1px solid var(--rule-soft)}
+  .section h3{margin:0 0 10px;font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+  .field:last-child{margin-bottom:0}
+  .label-row{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--ink-soft)}
+  .label-row .v{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:500}
+  input[type="text"],input[type="search"]{width:100%;padding:7px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--bg);color:var(--ink);outline:none}
+  input[type="text"]:focus,input[type="search"]:focus{border-color:var(--accent)}
+  input[type="range"]{width:100%;accent-color:var(--ink)}
+  .toggle{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+  .toggle input{appearance:none;width:30px;height:18px;background:var(--rule);border-radius:9px;position:relative;cursor:pointer;transition:background .15s}
+  .toggle input:checked{background:var(--ink)}
+  .toggle input::before{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;background:var(--bg);border-radius:50%;transition:transform .15s}
+  .toggle input:checked::before{transform:translateX(12px)}
+
+  /* search dropdown */
+  .search-wrap{position:relative}
+  .search-results{position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--panel);border:1px solid var(--rule);border-radius:6px;max-height:280px;overflow-y:auto;z-index:10;box-shadow:0 4px 16px oklch(0.2 0.01 80 / 0.08)}
+  .search-results.hidden{display:none}
+  .sr-item{padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--rule-soft);display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .sr-item:last-child{border-bottom:none}
+  .sr-item:hover,.sr-item.active{background:var(--accent-soft)}
+  .sr-item .name{color:var(--ink);font-weight:500}
+  .sr-item .yrs{color:var(--ink-faint);font-size:11px;font-variant-numeric:tabular-nums}
+
+  /* ---------- proband popover (hover the proband card) ---------- */
+  #proband-popover{position:fixed;z-index:30;background:var(--panel);border:1px solid var(--rule);border-radius:10px;box-shadow:0 12px 32px oklch(0.2 0.01 80 / 0.18);min-width:200px;max-width:260px;padding:6px;display:none;font-size:12px}
+  #proband-popover.open{display:block}
+  #proband-popover .pp-section{padding:6px 4px 4px}
+  #proband-popover .pp-section + .pp-section{border-top:1px solid var(--rule-soft);margin-top:2px}
+  #proband-popover .pp-h{font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint);padding:0 8px 4px}
+  #proband-popover .pp-item{display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px 8px;border-radius:5px;cursor:pointer;color:var(--ink)}
+  #proband-popover .pp-item:hover{background:var(--accent-soft)}
+  #proband-popover .pp-item .pp-yr{color:var(--ink-faint);font-size:10px;font-variant-numeric:tabular-nums;flex-shrink:0}
+  #proband-popover .pp-item .pp-sex{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--ink-faint)}
+  #proband-popover .pp-item .pp-sex.male{background:oklch(0.6 0.12 235)}
+  #proband-popover .pp-item .pp-sex.female{background:oklch(0.6 0.13 25)}
+  #proband-popover .pp-empty{color:var(--ink-faint);padding:4px 8px;font-style:italic}
+  #proband-popover .pp-arrow{position:absolute;width:10px;height:10px;background:var(--panel);border-left:1px solid var(--rule);border-top:1px solid var(--rule);transform:rotate(45deg);bottom:-6px;left:24px}
+  #proband-popover.below .pp-arrow{top:-6px;bottom:auto;border-left:1px solid var(--rule);border-top:1px solid var(--rule)}
+
+  /* per-generation table */
+  /* per-generation table (lives inside the modal) */
+  .gentable{display:grid;align-items:center}
+  .gentable .h{color:var(--ink-faint);font-size:10px;text-align:center;text-transform:uppercase;letter-spacing:0.06em;padding-bottom:4px;border-bottom:1px solid var(--rule-soft)}
+  .gentable .gen-label{color:var(--ink-soft);text-align:center;font-variant-numeric:tabular-nums;font-weight:500}
+  .gentable input{width:100%;padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--bg);color:var(--ink);text-align:center;font-variant-numeric:tabular-nums;outline:none;-moz-appearance:textfield}
+  .gentable input::-webkit-outer-spin-button,.gentable input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .gentable input:focus{border-color:var(--accent)}
+  .gentable input[type="range"]{padding:0;height:18px}
+
+  /* ---------- modal ---------- */
+  .modal-backdrop{position:fixed;inset:0;background:oklch(0.2 0.01 80 / 0.25);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal-backdrop.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:18px 20px;min-width:560px;max-width:90vw;max-height:86vh;overflow-y:auto;box-shadow:0 20px 60px oklch(0.2 0.01 80 / 0.18)}
+  .modal h3{margin:0 0 14px;font-size:13px;font-weight:600}
+  .modal .row-end{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule-soft)}
+  .modal .gentable{grid-template-columns:22px repeat(6,72px) 28px;gap:8px 6px;font-size:12px}
+  .modal .gentable input[type="number"]{font-size:12px;padding:5px 6px}
+
+  /* ---------- nodes (in svg foreignObject) ---------- */
+  .node-card{
+    width:100%;height:100%;
+    background:var(--card);
+    border:1px solid var(--card-bd);
+    border-radius:5px;
+    padding:5px 7px;
+    overflow:hidden;
+    display:flex;flex-direction:column;justify-content:center;
+    line-height:1.18;
+    color:var(--ink);
+    cursor:pointer;
+    transition:border-color .12s, background .12s;
+  }
+  .node-card.male{background:var(--male-tint)}
+  .node-card.female{background:var(--female-tint)}
+  .node-card.proband{border-color:var(--proband);border-width:1.5px;box-shadow:0 0 0 2px oklch(0.55 0.13 145 / 0.12)}
+  .node-card:hover{border-color:var(--ink-soft)}
+  .node-card .nm{font-weight:500;color:var(--ink);overflow-wrap:break-word;hyphens:auto}
+  .node-card .yr{color:var(--ink);font-variant-numeric:tabular-nums;margin-top:2px;font-size:0.85em;text-align:right}
+  .node-card .sym{display:none}
+
+  .gen-header{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.08em;font-weight:500}
+
+  /* edge lines */
+  path.edge{fill:none;stroke:var(--hairline);stroke-width:1}
+  line.spouse-bar{stroke:var(--hairline);stroke-width:1}
+
+  /* zoom indicator */
+  #zoom-pill{position:absolute;bottom:12px;left:12px;font-variant-numeric:tabular-nums}
+
+  .kbd{display:inline-block;padding:1px 5px;border:1px solid var(--rule);border-bottom-width:2px;border-radius:4px;font:11px ui-monospace,Menlo,monospace;color:var(--ink-soft);background:var(--bg)}
+
+  details summary{cursor:pointer;color:var(--ink-soft);font-size:11px;padding:4px 0;list-style:none}
+  details summary::-webkit-details-marker{display:none}
+  details summary::before{content:"▸ ";color:var(--ink-faint)}
+  details[open] summary::before{content:"▾ "}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div id="topbar">
+      <div class="pill"><span class="dot"></span>Proband: <b id="proband-name">—</b></div>
+      <div class="pill" id="count-pill" style="display:none">Showing <b id="count-shown">0</b> of <b id="count-total">0</b> ancestors</div>
+      <div class="topbar-spacer"></div>
+      <button class="iconbtn" id="btn-fit" title="Fit to view (F)">⊡ Fit</button>
+      <button class="iconbtn" id="btn-recenter" title="Recenter (R)">⊙ Recenter</button>
+      <button class="iconbtn" id="btn-png" title="Export PNG">↓ PNG</button>
+      <button class="iconbtn" id="btn-pdf" title="Export PDF (A4)">↓ PDF</button>
+    </div>
+    <div id="viewport"></div>
+    <div id="proband-popover">
+      <div class="pp-arrow"></div>
+      <div id="pp-body"></div>
+    </div>
+    <div class="pill" id="zoom-pill">100%</div>
+
+    <div id="drop">
+      <div class="dz">
+        <h1>Ancestor Tree Visualizer</h1>
+        <p>Drop a <code>.ged</code> file to render the ancestor tree.</p>
+        <div class="row">
+          <button class="btn primary" id="btn-pick">Choose .ged file…</button>
+          <button class="btn ghost" id="btn-sample">Use sample file</button>
+        </div>
+        <div class="hint">GEDCOM 5.5 / 5.5.1 • parsed in your browser</div>
+      </div>
+      <input type="file" id="file-input" accept=".ged,.GED,text/plain" hidden>
+    </div>
+  </div>
+
+  <aside>
+    <header>
+      <h2>Ancestor Tree</h2>
+      <div class="file-meta" id="file-meta">No file loaded</div>
+      <button class="btn ghost" id="btn-load" style="margin-top:8px;width:100%;justify-content:center;font-size:11px">Load .ged file…</button>
+    </header>
+
+    <div class="section">
+      <h3>Proband</h3>
+      <div class="field search-wrap">
+        <input type="search" id="search" placeholder="Search by name…" autocomplete="off" disabled>
+        <div class="search-results hidden" id="search-results"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Generations</h3>
+      <div class="field">
+        <div class="label-row"><span>Depth</span><span class="v"><span id="gen-val">5</span> generations</span></div>
+        <input type="range" id="gen-slider" min="2" max="25" step="1" value="5">
+      </div>
+      <div class="field">
+        <label class="toggle"><input type="checkbox" id="show-years" checked><span>Show birth/death years</span></label>
+      </div>
+      <div class="field">
+        <label class="toggle"><input type="checkbox" id="color-sex"><span>Tint cards by sex</span></label>
+      </div>
+      <div class="field">
+        <label class="toggle"><input type="checkbox" id="show-spouses" checked><span>Show spouses (proband only)</span></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Per-generation layout</h3>
+      <button class="btn ghost" id="btn-open-gen" style="width:100%;justify-content:center">Open layout panel…</button>
+    </div>
+
+    <div class="section" style="font-size:11px;color:var(--ink-faint);border-bottom:none">
+      <div style="display:flex;flex-wrap:wrap;gap:6px 12px">
+        <span><span class="kbd">drag</span> pan</span>
+        <span><span class="kbd">wheel</span> zoom</span>
+        <span><span class="kbd">F</span> fit</span>
+        <span><span class="kbd">R</span> reset</span>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div class="modal-backdrop" id="gen-modal">
+  <div class="modal" role="dialog" aria-label="Per-generation layout">
+    <h3>Per-generation layout</h3>
+    <div id="gentable" class="gentable"></div>
+    <div class="row-end">
+      <button class="btn ghost" id="btn-reset-gen">Reset to defaults</button>
+      <button class="btn primary" id="btn-close-gen">Done</button>
+    </div>
+  </div>
+
+<script>
+/* ============================================================
+   GEDCOM Ancestor Tree Visualizer
+   single-file, no dependencies
+   ============================================================ */
+
+/* ---------- 1. GEDCOM parser ---------- */
+function parseGedcom(text){
+  // Normalize line endings + BOM
+  text = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const lines = text.split('\n');
+
+  // First pass: build hierarchical record tree
+  const records = [];
+  const stack = []; // stack[level] = current node at that level
+  for(let i=0;i<lines.length;i++){
+    const raw = lines[i];
+    if(!raw.trim()) continue;
+    const m = raw.match(/^(\d+)\s+(?:(@[^@]+@)\s+)?(\S+)(?:\s(.*))?$/);
+    if(!m) continue;
+    const level = +m[1];
+    const xref  = m[2] || null;
+    const tag   = m[3];
+    const value = m[4] || '';
+    const node = { level, xref, tag, value, children: [] };
+
+    if(tag === 'CONT' && stack[level-1]){
+      stack[level-1].value += '\n' + value;
+      continue;
+    }
+    if(tag === 'CONC' && stack[level-1]){
+      stack[level-1].value += value;
+      continue;
+    }
+
+    if(level === 0){
+      records.push(node);
+    } else {
+      const parent = stack[level-1];
+      if(parent) parent.children.push(node);
+    }
+    stack[level] = node;
+    stack.length = level + 1;
+  }
+
+  // Second pass: build INDI / FAM maps
+  const indis = new Map();
+  const fams  = new Map();
+  let head = {};
+
+  for(const rec of records){
+    if(rec.tag === 'INDI' && rec.xref){
+      indis.set(rec.xref, parseIndi(rec));
+    } else if(rec.tag === 'FAM' && rec.xref){
+      fams.set(rec.xref, parseFam(rec));
+    } else if(rec.tag === 'HEAD'){
+      head = parseHead(rec);
+    }
+  }
+
+  return { indis, fams, head };
+}
+
+function getChild(node, tag){ return node.children.find(c => c.tag === tag); }
+function getChildren(node, tag){ return node.children.filter(c => c.tag === tag); }
+
+function parseEvent(node){
+  if(!node) return null;
+  const date = getChild(node, 'DATE');
+  const plac = getChild(node, 'PLAC');
+  return {
+    date: date ? date.value : '',
+    year: date ? extractYear(date.value) : null,
+    place: plac ? plac.value : ''
+  };
+}
+function extractYear(s){
+  if(!s) return null;
+  // try 4-digit year anywhere
+  const m = s.match(/\b(\d{4})\b/);
+  return m ? +m[1] : null;
+}
+
+function parseName(value){
+  // GEDCOM name: Given /Surname/ Suffix
+  // Some entries (like "Anna ... f. /Meyer/") have prefixes — keep as-is.
+  if(!value) return { full: '', given: '', surname: '' };
+  const m = value.match(/^(.*?)\/([^/]*)\/(.*)$/);
+  if(!m){
+    return { full: value.trim(), given: value.trim(), surname: '' };
+  }
+  const given = m[1].trim();
+  const surname = m[2].trim();
+  const suffix = m[3].trim();
+  const full = [given, surname, suffix].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  return { full, given, surname, suffix };
+}
+
+function parseIndi(rec){
+  const nameNode = getChild(rec, 'NAME');
+  const name = nameNode ? parseName(nameNode.value) : { full: '(unknown)', given:'', surname:'' };
+  const sex = (getChild(rec, 'SEX')?.value || '').trim().toUpperCase();
+  const birt = parseEvent(getChild(rec, 'BIRT'));
+  const deat = parseEvent(getChild(rec, 'DEAT'));
+  const famc = getChildren(rec, 'FAMC').map(n => n.value);
+  const fams = getChildren(rec, 'FAMS').map(n => n.value);
+  return {
+    id: rec.xref, name, sex,
+    birth: birt, death: deat,
+    famc, fams
+  };
+}
+
+function parseFam(rec){
+  const husb = getChild(rec, 'HUSB')?.value || null;
+  const wife = getChild(rec, 'WIFE')?.value || null;
+  const chil = getChildren(rec, 'CHIL').map(n => n.value);
+  const marr = parseEvent(getChild(rec, 'MARR'));
+  return { id: rec.xref, husb, wife, chil, marr };
+}
+
+function parseHead(rec){
+  const sour = getChild(rec, 'SOUR');
+  const date = getChild(rec, 'DATE');
+  const subm = getChild(rec, 'SUBM');
+  return {
+    source: sour?.value || '',
+    date: date?.value || '',
+    submitter: subm?.value || ''
+  };
+}
+
+/* ---------- 2. Build ancestor tree from a proband ---------- */
+function buildAncestorTree(probandId, indis, fams, maxGens){
+  // Returns a tree:
+  //   { person, gen, father: node|null, mother: node|null }
+  // gen 0 = proband.
+  function recurse(personId, gen){
+    if(!personId || gen >= maxGens) return null;
+    const person = indis.get(personId);
+    if(!person) return null;
+    const node = { person, gen, father: null, mother: null };
+    if(gen + 1 < maxGens){
+      // find FAMC
+      for(const fId of person.famc){
+        const fam = fams.get(fId);
+        if(!fam) continue;
+        if(fam.husb && !node.father) node.father = recurse(fam.husb, gen+1);
+        if(fam.wife && !node.mother) node.mother = recurse(fam.wife, gen+1);
+        if(node.father || node.mother) break;
+      }
+    }
+    return node;
+  }
+  return recurse(probandId, 0);
+}
+
+function countAncestors(tree){
+  if(!tree) return 0;
+  return 1 + countAncestors(tree.father) + countAncestors(tree.mother);
+}
+
+/* ---------- 3. Layout ---------- */
+/*
+  Horizontal left-to-right, proband on far left.
+  Each generation = column; nodes packed vertically.
+  Father stacked ABOVE mother in the same column.
+  Pair-spacing: a couple's two nodes sit adjacent (small gap),
+  with a larger gap between distinct couples.
+ */
+function layoutTree(root, opts){
+  if(!root) return { nodes: [], edges: [], pairs: [], width: 0, height: 0, columns: [] };
+
+  // Per-generation params (with defaults).
+  const G = opts.maxGens;
+  const colWidth   = (g) => opts.colWidth[g]    ?? 170;
+  const nodeW      = (g) => opts.nodeW?.[g]     ?? (colWidth(g) - 22);
+  const nodeH      = (g) => opts.nodeHeight[g]  ?? 44;
+  const vGap       = (g) => opts.vGap[g]        ?? 8;     // gap between unrelated nodes
+  const pairGap    = (g) => Math.max(2, Math.round(vGap(g) * 0.35));
+  const wrap       = (g) => opts.wrap[g]        ?? 18;
+  const armLen     = (g) => opts.armLen?.[g]    ?? 24;   // stacked-mode arm length (px)
+  // stack[g] === true → parents of gen-g node sit directly above/below it (same column)
+  const stack      = (g) => !!opts.stack?.[g];
+
+  // First, determine column X positions.
+  // When gen g is stacked, gen g+1's column is offset rightward so that a vertical line
+  // at 75% across a gen-g box lands at 25% across a gen-(g+1) box → each older generation
+  // visually steps to the right, with straight vertical connectors.
+  const colX = [0];
+  for(let g=1;g<G;g++){
+    const prevW = (opts.colWidth[g-1] ?? 170) - 22;
+    const myW   = (opts.colWidth[g]   ?? 170) - 22;
+    if(stack(g-1)){
+      colX.push(colX[g-1] + prevW * 0.75 - myW * 0.25);
+    } else {
+      colX.push(colX[g-1] + (opts.colWidth[g-1] ?? 170));
+    }
+  }
+
+  // Bottom-up traversal: compute the vertical "block" height of each subtree at gen g.
+  // For each node at gen g, recursively place its parents at gen g+1 (both fixed in same column)
+  // and stack them so as a *pair* they form a tight block.
+  //
+  // Returns: { topY, bottomY, centerY } after placement, mutating node.x/node.y.
+  const nodes = [];
+  const edges = [];
+  const pairs = [];
+
+  function place(node, yTop){
+    // First place parents (they're in a deeper column). Parents form a vertical block:
+    //   father block (top) — pair gap — mother block (bottom)
+    const g = node.gen;
+    const childGen = g + 1;
+
+    // If we have parents and they should be drawn:
+    let parentBlockTop = null, parentBlockBottom = null;
+    let fatherInfo = null, motherInfo = null;
+    if(childGen < G && (node.father || node.mother)){
+      const slotH = computeBlockHeight(node.father, childGen);
+      const slot2H = computeBlockHeight(node.mother, childGen);
+
+      const isStacked = stack(g);
+      const stackInnerGap = isStacked ? armLen(g) : pairGap(childGen);
+      const myH = nodeH(g);
+
+      parentBlockTop = yTop;
+      let cursor = yTop;
+
+      if(isStacked){
+        // Father subtree on top, then a gap, then THIS node, then a gap, then mother subtree.
+        if(node.father){
+          fatherInfo = place(node.father, cursor);
+          cursor = fatherInfo.bottomY + stackInnerGap;
+        } else {
+          cursor += slotH + stackInnerGap;
+        }
+        // reserve this node's vertical slot inside the parent block
+        const myTopReserved = cursor;
+        cursor += myH + stackInnerGap;
+        if(node.mother){
+          motherInfo = place(node.mother, cursor);
+          cursor = motherInfo.bottomY;
+        } else {
+          cursor += slot2H;
+        }
+        parentBlockBottom = cursor;
+        // Override center: this node sits in the reserved slot, not centered between parents
+        node._stackedSlotTop = myTopReserved;
+      } else {
+        if(node.father){
+          fatherInfo = place(node.father, cursor);
+          cursor = fatherInfo.bottomY + (node.mother ? pairGap(childGen) : 0);
+        } else {
+          cursor += slotH + (node.mother ? pairGap(childGen) : 0);
+        }
+        if(node.mother){
+          motherInfo = place(node.mother, cursor);
+          cursor = motherInfo.bottomY;
+        } else {
+          cursor += slot2H;
+        }
+        parentBlockBottom = cursor;
+      }
+    }
+
+    // Place this node centered between parents (or just at yTop if no parents).
+    const h = nodeH(g);
+    let centerY;
+    if(node._stackedSlotTop !== undefined){
+      centerY = node._stackedSlotTop + h/2;
+    } else if(parentBlockTop !== null && parentBlockBottom !== null){
+      centerY = (parentBlockTop + parentBlockBottom) / 2;
+    } else {
+      centerY = yTop + h/2;
+    }
+    const myTop = centerY - h/2;
+    const myBottom = centerY + h/2;
+
+    node.x = colX[g];
+    node.y = myTop;
+    node.width = nodeW(g);             // box width per generation
+    node.height = h;
+    node.wrap = wrap(g);
+    nodes.push(node);
+
+    // Spouse pair record (for drawing the bracket between two parents)
+    if(fatherInfo && motherInfo){
+      pairs.push({ a: node.father, b: node.mother, gen: childGen, stacked: stack(g) });
+    }
+
+    // Edges from child -> father, child -> mother
+    const stackedHere = stack(g);
+    if(fatherInfo){
+      edges.push({ child: node, parent: node.father, stacked: stackedHere, side: 'father' });
+    }
+    if(motherInfo){
+      edges.push({ child: node, parent: node.mother, stacked: stackedHere, side: 'mother' });
+    }
+
+    // Determine outer extent including child node
+    const outerTop    = parentBlockTop    !== null ? Math.min(myTop,    parentBlockTop)    : myTop;
+    const outerBottom = parentBlockBottom !== null ? Math.max(myBottom, parentBlockBottom) : myBottom;
+
+    return { topY: outerTop, bottomY: outerBottom, centerY };
+  }
+
+  // We need to know how tall each subtree's "parent block" will be in advance
+  // so we can lay the deepest column out first cumulatively.
+  // Use a memoized height computation that mirrors the placement logic.
+  function computeBlockHeight(node, gen){
+    if(!node || gen >= G) return nodeH(gen);
+    if(gen + 1 >= G) return nodeH(gen);
+    const parentsH = computeParentsHeight(node, gen);
+    if(stack(gen)){
+      // stacked: this node sits BETWEEN its two parent blocks → block height includes self
+      return parentsH;
+    }
+    return Math.max(nodeH(gen), parentsH);
+  }
+  function computeParentsHeight(node, gen){
+    const childGen = gen + 1;
+    if(childGen >= G) return 0;
+    const fH = node.father ? computeBlockHeight(node.father, childGen) : nodeH(childGen);
+    const mH = node.mother ? computeBlockHeight(node.mother, childGen) : nodeH(childGen);
+    if(!node.father && !node.mother) return 0;
+    if(stack(gen)){
+      const innerGap = armLen(gen);
+      return fH + innerGap + nodeH(gen) + innerGap + mH;
+    }
+    return fH + pairGap(childGen) + mH;
+  }
+
+  place(root, 0);
+
+  // Normalize: shift so min y = padding
+  let minY = Infinity, maxY = -Infinity;
+  for(const n of nodes){
+    minY = Math.min(minY, n.y);
+    maxY = Math.max(maxY, n.y + n.height);
+  }
+  const PAD = 80;
+  const dy = PAD - minY;
+  for(const n of nodes){ n.y += dy; }
+
+  // total dims — last visible column may be stacked, so use max colX + its width
+  let maxRight = 0;
+  for(let g=0; g<G; g++){
+    const right = colX[g] + (opts.colWidth[g] ?? 170);
+    if(right > maxRight) maxRight = right;
+  }
+  const totalWidth  = maxRight + PAD*2 - 22;
+  const totalHeight = (maxY - minY) + PAD*2;
+
+  // x shift for left padding
+  for(const n of nodes){ n.x += PAD; }
+
+  return {
+    nodes, edges, pairs,
+    width: totalWidth,
+    height: totalHeight,
+    columns: colX.map(x => x + PAD)
+  };
+}
+
+/* ---------- 4. Rendering ---------- */
+const STATE = {
+  data: null,       // { indis, fams, head }
+  fileMeta: '',
+  probandId: null,
+  maxGens: 5,
+  showYears: true,
+  colorSex: false,
+  showSpouses: true,
+  // per-gen (length = max possible 25)
+  colWidth:   [180, 170, 165, 160, 155, 150, 145, 140, 135, 130, 125, 120, 115, 112, 110, 108, 106, 104, 102, 100, 100, 100, 100, 100, 100],
+  nodeW:      [158, 148, 143, 138, 133, 128, 123, 118, 113, 108, 103,  98,  93,  90,  88,  86,  84,  82,  80,  78,  78,  78,  78,  78,  78],
+  nodeHeight: [ 54,  46,  44,  42,  40,  38,  36,  34,  32,  30,  28,  27,  26,  25,  24,  24,  24,  24,  24,  24,  24,  24,  24,  24,  24],
+  vGap:       [ 16,  12,  10,   9,   8,   7,   6,   5,   4,   4,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3],
+  wrap:       [ 22,  20,  18,  16,  14,  13,  12,  11,  10,   9,   8,   8,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7],
+  // armLen[g]: vertical arrow length between a gen-g node and its stacked parent (px)
+  armLen:     [ 40,  32,  28,  24,  22,  20,  18,  16,  14,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12],
+  // stack[g] === true → parents in column g+1 sit directly above/below the gen-g child
+  stack:      [false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false],
+  view: { x:0, y:0, scale:1 },
+};
+
+const $stage = document.getElementById('stage');
+const $vp    = document.getElementById('viewport');
+const $drop  = document.getElementById('drop');
+const $fileInput = document.getElementById('file-input');
+
+function render(){
+  if(!STATE.data || !STATE.probandId){ return; }
+
+  const tree = buildAncestorTree(STATE.probandId, STATE.data.indis, STATE.data.fams, STATE.maxGens);
+  if(!tree){ $vp.innerHTML = ''; return; }
+
+  // Optionally inject proband spouse(s) as siblings of the proband (drawn in column 0).
+  // For simplicity in this MVP, we don't lay spouses out as extra column-0 cards;
+  // we keep the focus on the ancestor structure. The toggle is wired but currently noop.
+  // (Visible spouses make more sense for the proband only, and doing it correctly
+  // would need extra layout — leaving a placeholder.)
+
+  const layout = layoutTree(tree, {
+    maxGens: STATE.maxGens,
+    colWidth: STATE.colWidth,
+    nodeW: STATE.nodeW,
+    nodeHeight: STATE.nodeHeight,
+    vGap: STATE.vGap,
+    wrap: STATE.wrap,
+    armLen: STATE.armLen,
+    stack: STATE.stack,
+  });
+
+  // ------ build SVG ------
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class','tree');
+  svg.setAttribute('width',  layout.width);
+  svg.setAttribute('height', layout.height);
+  svg.setAttribute('viewBox', `0 0 ${layout.width} ${layout.height}`);
+
+  // generation column headers — skip duplicate header for stacked columns (same x as previous)
+  const headerY = 38;
+  const seenColX = new Set();
+  for(let g=0; g<STATE.maxGens; g++){
+    const colKey = Math.round(layout.columns[g]);
+    if(seenColX.has(colKey)) continue; // stacked into previous column
+    seenColX.add(colKey);
+    const x = layout.columns[g] + ((STATE.colWidth[g] ?? 170) - 22)/2;
+    const t = document.createElementNS(svgNS,'text');
+    t.setAttribute('x', x);
+    t.setAttribute('y', headerY);
+    t.setAttribute('text-anchor','middle');
+    t.setAttribute('class','gen-header');
+    t.setAttribute('fill','currentColor');
+    t.style.fill = 'oklch(0.62 0.01 80)';
+    t.style.font = '500 10px ui-sans-serif,system-ui,sans-serif';
+    t.style.letterSpacing = '0.08em';
+    t.textContent = g === 0 ? 'PROBAND' : g === 1 ? 'PARENTS' : g === 2 ? 'GRANDPARENTS' : `GEN ${g}`;
+    svg.appendChild(t);
+  }
+
+  // edges (draw before nodes)
+  const ELBOW = 14;
+  for(const e of layout.edges){
+    const c = e.child, p = e.parent;
+    const path = document.createElementNS(svgNS,'path');
+    let d;
+    if(e.stacked){
+      // Straight vertical at the child's 75%-across point. (Parents have been
+      // offset rightward in layout so this same x lands ~25% across them.)
+      const xLine = c.x + c.width * 0.75;
+      if(e.side === 'father'){
+        d = `M ${xLine} ${c.y} V ${p.y + p.height}`;
+      } else {
+        d = `M ${xLine} ${c.y + c.height} V ${p.y}`;
+      }
+    } else {
+      const x1 = c.x + c.width;            // right edge of child
+      const y1 = c.y + c.height/2;
+      const x2 = p.x;                       // left edge of parent
+      const y2 = p.y + p.height/2;
+      const xMid = x1 + Math.max(ELBOW, (x2 - x1) * 0.5);
+      d = `M ${x1} ${y1} H ${xMid} V ${y2} H ${x2}`;
+    }
+    path.setAttribute('d', d);
+    path.setAttribute('class','edge');
+    path.style.stroke = 'oklch(0.72 0.012 80)';
+    path.style.strokeWidth = '1';
+    path.style.fill = 'none';
+    svg.appendChild(path);
+  }
+
+  // spouse-pair brackets — drawn as a clear vertical hairline between father and mother
+  // in the same column, plus short horizontal stubs into each box, so the couple reads
+  // as a unit. Skipped in stacked mode (the child sits between, would cross the line).
+  for(const pair of layout.pairs){
+    if(pair.stacked) continue;
+    const a = pair.a, b = pair.b;
+    if(!a || !b) continue;
+    const x = Math.min(a.x, b.x) - 8;
+    const yA = a.y + a.height / 2;
+    const yB = b.y + b.height / 2;
+    const path = document.createElementNS(svgNS,'path');
+    // stub from father's left → down to mother's level → into mother's left
+    const d = `M ${a.x} ${yA} H ${x} V ${yB} H ${b.x}`;
+    path.setAttribute('d', d);
+    path.setAttribute('class','spouse-bar');
+    path.style.stroke = 'oklch(0.78 0.012 80)';
+    path.style.strokeWidth = '1';
+    path.style.fill = 'none';
+    svg.appendChild(path);
+  }
+
+  // nodes (foreignObject so we get HTML wrapping)
+  for(const n of layout.nodes){
+    const fo = document.createElementNS(svgNS,'foreignObject');
+    fo.setAttribute('x', n.x);
+    fo.setAttribute('y', n.y);
+    fo.setAttribute('width', n.width);
+    fo.setAttribute('height', n.height);
+    fo.setAttribute('data-id', n.person.id);
+
+    const html = renderNodeHTML(n);
+    // foreignObject needs xhtml namespace wrapper
+    const wrap = document.createElementNS('http://www.w3.org/1999/xhtml','div');
+    wrap.style.width = '100%';
+    wrap.style.height = '100%';
+    wrap.innerHTML = html;
+    fo.appendChild(wrap);
+    fo.addEventListener('click', () => setProband(n.person.id));
+    if(n.gen === 0){
+      // Proband: hover to reveal spouse / children navigation popover.
+      fo.style.cursor = 'pointer';
+      fo.addEventListener('mouseenter', () => schedulePopoverOpen(fo, n.person.id));
+      fo.addEventListener('mouseleave', schedulePopoverClose);
+    }
+    svg.appendChild(fo);
+  }
+
+  // mount
+  $vp.innerHTML = '';
+  $vp.appendChild(svg);
+  STATE.layoutWidth  = layout.width;
+  STATE.layoutHeight = layout.height;
+
+  // counts
+  const total = countAllAncestors(STATE.probandId, STATE.data.indis, STATE.data.fams);
+  document.getElementById('count-shown').textContent = layout.nodes.length;
+  document.getElementById('count-total').textContent = total;
+  document.getElementById('count-pill').style.display = '';
+
+  document.getElementById('proband-name').textContent = STATE.data.indis.get(STATE.probandId)?.name.full || '—';
+
+  applyTransform();
+}
+
+function renderNodeHTML(node){
+  const p = node.person;
+  const sex = p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : '';
+  const isProband = node.gen === 0;
+  const cls = ['node-card'];
+  if(STATE.colorSex && sex) cls.push(sex);
+  if(isProband) cls.push('proband');
+
+  // wrap name to char limit (soft — we set CSS that wraps; the limit governs width logic upstream)
+  const nm = escapeHTML(p.name.full || '(unknown)');
+  let html = `<div class="${cls.join(' ')}" style="font-size:${nodeFontSize(node.gen)}px"><div class="nm">${nm}</div>`;
+  if(STATE.showYears){
+    const by = p.birth?.year ?? '';
+    const dy = p.death?.year ?? '';
+    if(by || dy){
+      html += `<div class="yr">${by || '?'}–${dy || (by && !dy ? '' : '?')}</div>`;
+    }
+  }
+  html += `</div>`;
+  return html;
+}
+function nodeFontSize(gen){
+  // Slightly smaller text in deeper generations
+  return Math.max(9, 13 - gen*0.6);
+}
+function escapeHTML(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function countAllAncestors(id, indis, fams){
+  // Count distinct ancestors regardless of generation cap (capped at 12 to avoid pathological loops).
+  const seen = new Set();
+  function walk(pid, depth){
+    if(!pid || seen.has(pid) || depth > 27) return;
+    seen.add(pid);
+    const p = indis.get(pid); if(!p) return;
+    for(const fId of p.famc){
+      const fam = fams.get(fId); if(!fam) continue;
+      walk(fam.husb, depth+1);
+      walk(fam.wife, depth+1);
+      break;
+    }
+  }
+  walk(id, 0);
+  seen.delete(id);
+  return seen.size;
+}
+
+/* ---------- 5. Pan / zoom ---------- */
+function applyTransform(){
+  const { x, y, scale } = STATE.view;
+  $vp.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+  document.getElementById('zoom-pill').textContent = Math.round(scale*100) + '%';
+}
+
+let panning = false, panStart = null;
+$stage.addEventListener('pointerdown', e => {
+  if(e.target.closest('.node-card')) return; // let clicks through
+  if(e.target.closest('#topbar') || e.target.closest('#zoom-pill')) return;
+  if(e.target.closest('#proband-popover')) return; // don't steal popover clicks via pointer capture
+  panning = true; panStart = { x: e.clientX, y: e.clientY, vx: STATE.view.x, vy: STATE.view.y };
+  $stage.classList.add('panning');
+  $stage.setPointerCapture(e.pointerId);
+});
+$stage.addEventListener('pointermove', e => {
+  if(!panning) return;
+  STATE.view.x = panStart.vx + (e.clientX - panStart.x);
+  STATE.view.y = panStart.vy + (e.clientY - panStart.y);
+  applyTransform();
+});
+$stage.addEventListener('pointerup',   e => { panning = false; $stage.classList.remove('panning'); });
+$stage.addEventListener('pointercancel', e => { panning = false; $stage.classList.remove('panning'); });
+
+$stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = $stage.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const oldScale = STATE.view.scale;
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  const newScale = Math.min(4, Math.max(0.1, oldScale * factor));
+  // zoom around cursor
+  STATE.view.x = mx - (mx - STATE.view.x) * (newScale / oldScale);
+  STATE.view.y = my - (my - STATE.view.y) * (newScale / oldScale);
+  STATE.view.scale = newScale;
+  applyTransform();
+}, { passive: false });
+
+function fitToView(){
+  if(!STATE.layoutWidth) return;
+  const rect = $stage.getBoundingClientRect();
+  const sx = (rect.width - 40) / STATE.layoutWidth;
+  const sy = (rect.height - 40) / STATE.layoutHeight;
+  const s = Math.min(sx, sy, 1);
+  STATE.view.scale = s;
+  STATE.view.x = (rect.width  - STATE.layoutWidth  * s) / 2;
+  STATE.view.y = (rect.height - STATE.layoutHeight * s) / 2;
+  applyTransform();
+}
+function recenter(){
+  if(!STATE.layoutWidth) return;
+  const rect = $stage.getBoundingClientRect();
+  STATE.view.scale = 1;
+  STATE.view.x = 40;
+  STATE.view.y = (rect.height - STATE.layoutHeight) / 2;
+  applyTransform();
+}
+
+document.getElementById('btn-fit').addEventListener('click', fitToView);
+document.getElementById('btn-recenter').addEventListener('click', recenter);
+document.addEventListener('keydown', e => {
+  if(e.target.matches('input,textarea')) return;
+  if(e.key === 'f' || e.key === 'F') fitToView();
+  if(e.key === 'r' || e.key === 'R') recenter();
+});
+
+/* ---------- 6. PNG / SVG export ---------- */
+document.getElementById('btn-png').addEventListener('click', exportPNG);
+function buildExportSVG(){
+  const svg = $vp.querySelector('svg');
+  if(!svg) return null;
+  const clone = svg.cloneNode(true);
+  clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  clone.setAttribute('xmlns:xhtml','http://www.w3.org/1999/xhtml');
+  // Inline the rules cards need (foreignObject relies on host CSS otherwise)
+  const style = document.createElementNS('http://www.w3.org/2000/svg','style');
+  style.textContent = `
+    .node-card{ box-sizing:border-box; background:oklch(0.995 0.003 85); border:1px solid oklch(0.83 0.01 80);
+      border-radius:5px; padding:5px 7px; overflow:hidden;
+      display:flex; flex-direction:column; justify-content:center; line-height:1.18;
+      color:oklch(0.22 0.01 80); font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
+      width:100%; height:100%; }
+    .node-card.male{background:oklch(0.97 0.022 235)}
+    .node-card.female{background:oklch(0.97 0.022 25)}
+    .node-card.proband{border-color:oklch(0.55 0.13 145); border-width:1.5px}
+    .node-card .nm{font-weight:500; overflow-wrap:break-word}
+    .node-card .yr{color:oklch(0.62 0.01 80); margin-top:2px; font-size:0.85em; font-variant-numeric:tabular-nums}
+  `;
+  clone.insertBefore(style, clone.firstChild);
+  return new XMLSerializer().serializeToString(clone);
+}
+
+function downloadBlob(blob, filename){
+  const a = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function exportPNG(){
+  const xml = buildExportSVG();
+  if(!xml){ alert('Nothing to export yet — load a GEDCOM and pick a proband.'); return; }
+  const baseName = (STATE.data?.indis.get(STATE.probandId)?.name.full || 'tree').replace(/\s+/g,'_');
+
+  // Try rasterizing to PNG. SVGs with <foreignObject> can taint the canvas
+  // in some browser/sandbox contexts, so we fall back to downloading the SVG.
+  try {
+    const svgBlob = new Blob(['<?xml version="1.0" standalone="no"?>\n', xml], { type:'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = () => rej(new Error('image-load-failed'));
+      img.src = url;
+    });
+    const scale = 2;
+    const w = STATE.layoutWidth, h = STATE.layoutHeight;
+    const canvas = document.createElement('canvas');
+    canvas.width = w * scale; canvas.height = h * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fbfaf7';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.scale(scale,scale);
+    ctx.drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    // Detect taint — toBlob throws SecurityError on tainted canvases
+    const blob = await new Promise((res, rej) => {
+      try { canvas.toBlob(b => b ? res(b) : rej(new Error('toBlob returned null')), 'image/png'); }
+      catch(e){ rej(e); }
+    });
+    downloadBlob(blob, `ancestor-tree-${baseName}.png`);
+    return;
+  } catch(err){
+    console.warn('PNG rasterization failed, falling back to SVG:', err);
+  }
+
+  // Fallback: download the SVG directly. It opens in any browser and
+  // can be converted to PNG offline.
+  const svgBlob = new Blob(['<?xml version="1.0" standalone="no"?>\n', xml], { type:'image/svg+xml;charset=utf-8' });
+  downloadBlob(svgBlob, `ancestor-tree-${baseName}.svg`);
+}
+
+/* ---------- 6b. PDF export ---------- */
+document.getElementById('btn-pdf').addEventListener('click', exportPDF);
+function exportPDF(){
+  const xml = buildExportSVG();
+  if(!xml){ alert('Nothing to export yet — load a GEDCOM and pick a proband.'); return; }
+
+  const tw = STATE.layoutWidth;
+  const th = STATE.layoutHeight;
+
+  // A4 in mm. Pick the orientation that gives the larger scale factor.
+  const a4short = 210, a4long = 297;
+  const portraitScale  = Math.min(a4short / tw, a4long  / th);
+  const landscapeScale = Math.min(a4long  / tw, a4short / th);
+  const landscape = landscapeScale > portraitScale;
+  const pageW = landscape ? a4long  : a4short;  // mm
+  const pageH = landscape ? a4short : a4long;
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page{size:${pageW}mm ${pageH}mm;margin:10mm}
+  html,body{margin:0;padding:0;width:100%;height:100%}
+  body{display:flex;align-items:center;justify-content:center}
+  svg{width:100%;height:100%;max-width:100%;max-height:100%}
+</style>
+</head>
+<body>${xml}</body>
+</html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 400);
+}
+
+/* ---------- 7. Sidebar wiring ---------- */
+function buildGenTable(){
+  const t = document.getElementById('gentable');
+  let html = '';
+  html += `<div class="h">G</div><div class="h" title="Box width">W</div><div class="h" title="Box height">H</div><div class="h" title="Column step (horizontal spacing)">Col</div><div class="h">V Gap</div><div class="h">Wrap</div><div class="h" title="Arrow / arm length to next generation">Arm</div><div class="h" title="Stack parents vertically above/below child">↕</div>`;
+  for(let g=0; g<STATE.maxGens; g++){
+    const isLast = g === STATE.maxGens - 1;
+    html += `<div class="gen-label">${g}</div>`;
+    html += `<div><input type="number" data-k="nodeW"      data-g="${g}" min="40" max="320" step="2" value="${STATE.nodeW[g]}"></div>`;
+    html += `<div><input type="number" data-k="nodeHeight" data-g="${g}" min="20" max="200" step="2" value="${STATE.nodeHeight[g]}"></div>`;
+    html += `<div><input type="number" data-k="colWidth"   data-g="${g}" min="60" max="320" step="5" value="${STATE.colWidth[g]}"></div>`;
+    html += `<div><input type="number" data-k="vGap"       data-g="${g}" min="2"  max="40"  step="1" value="${STATE.vGap[g]}"></div>`;
+    html += `<div><input type="number" data-k="wrap"       data-g="${g}" min="6"  max="60"  step="1" value="${STATE.wrap[g]}"></div>`;
+    html += isLast
+      ? `<div style="text-align:center;color:var(--ink-faint)">—</div>`
+      : `<div title="Arm length: ${STATE.armLen[g]}px"><input type="range" data-k="armLen" data-g="${g}" min="-40" max="160" step="1" value="${STATE.armLen[g]}"></div>`;
+    html += `<div style="display:flex;justify-content:center">` +
+      (isLast ? '<span style="color:var(--ink-faint)">—</span>' :
+        `<input type="checkbox" data-k="stack" data-g="${g}" ${STATE.stack[g] ? 'checked' : ''} title="Stack parents of gen ${g} vertically above/below this column" style="accent-color:var(--ink);cursor:pointer">`) +
+      `</div>`;
+  }
+  t.innerHTML = html;
+  t.querySelectorAll('input').forEach(inp => {
+    const apply = () => {
+      const k = inp.dataset.k, g = +inp.dataset.g;
+      if(inp.type === 'checkbox'){
+        STATE[k][g] = inp.checked;
+      } else {
+        STATE[k][g] = +inp.value;
+        // Only auto-recalc node height when wrap changes AND user hasn't manually overridden H
+        if(k === 'armLen' && inp.parentElement) inp.parentElement.title = `Arm length: ${inp.value}px`;
+      }
+      render();
+    };
+    inp.addEventListener('input', apply);
+    inp.addEventListener('change', apply);
+  });
+}
+function estimateNodeHeight(g){
+  // Estimate: each line ~ fontSize * 1.2; assume up to 2 lines of name + 1 line of years.
+  const fs = nodeFontSize(g);
+  const nameLines = STATE.wrap[g] >= 16 ? 2 : 3;
+  const yearLine = STATE.showYears ? 1 : 0;
+  return Math.round(fs * 1.2 * (nameLines + yearLine) + 12);
+}
+
+document.getElementById('gen-slider').addEventListener('input', e => {
+  STATE.maxGens = +e.target.value;
+  document.getElementById('gen-val').textContent = STATE.maxGens;
+  buildGenTable();
+  render();
+});
+document.getElementById('show-years').addEventListener('change', e => {
+  STATE.showYears = e.target.checked;
+  render();
+});
+document.getElementById('color-sex').addEventListener('change', e => {
+  STATE.colorSex = e.target.checked;
+  render();
+});
+document.getElementById('show-spouses').addEventListener('change', e => {
+  STATE.showSpouses = e.target.checked;
+  render();
+});
+document.getElementById('btn-open-gen').addEventListener('click', () => {
+  document.getElementById('gen-modal').classList.add('open');
+});
+document.getElementById('btn-close-gen').addEventListener('click', () => {
+  document.getElementById('gen-modal').classList.remove('open');
+});
+document.getElementById('gen-modal').addEventListener('click', e => {
+  if(e.target.id === 'gen-modal') e.currentTarget.classList.remove('open');
+});
+
+document.getElementById('btn-reset-gen').addEventListener('click', () => {
+  STATE.colWidth   = [180, 170, 165, 160, 155, 150, 145, 140, 135, 130, 125, 120, 115, 112, 110, 108, 106, 104, 102, 100, 100, 100, 100, 100, 100];
+  STATE.nodeW      = [158, 148, 143, 138, 133, 128, 123, 118, 113, 108, 103,  98,  93,  90,  88,  86,  84,  82,  80,  78,  78,  78,  78,  78,  78];
+  STATE.nodeHeight = [ 54,  46,  44,  42,  40,  38,  36,  34,  32,  30,  28,  27,  26,  25,  24,  24,  24,  24,  24,  24,  24,  24,  24,  24,  24];
+  STATE.vGap       = [ 16,  12,  10,   9,   8,   7,   6,   5,   4,   4,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3,   3];
+  STATE.wrap       = [ 22,  20,  18,  16,  14,  13,  12,  11,  10,   9,   8,   8,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7,   7];
+  STATE.armLen     = [ 40,  32,  28,  24,  22,  20,  18,  16,  14,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12,  12];
+  STATE.stack      = [false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false];
+  buildGenTable();
+  render();
+});
+
+/* ---------- search ---------- */
+const $search = document.getElementById('search');
+const $sr     = document.getElementById('search-results');
+let searchIndex = [];
+
+function buildSearchIndex(){
+  searchIndex = [];
+  for(const [id, p] of STATE.data.indis){
+    const yr = p.birth?.year ?? p.death?.year ?? '';
+    searchIndex.push({
+      id,
+      label: p.name.full || '(unknown)',
+      lower: (p.name.full || '').toLowerCase(),
+      year: yr
+    });
+  }
+  searchIndex.sort((a,b) => a.label.localeCompare(b.label));
+}
+function runSearch(q){
+  q = q.trim().toLowerCase();
+  $sr.innerHTML = '';
+  if(!q){ $sr.classList.add('hidden'); return; }
+  const matches = [];
+  for(const e of searchIndex){
+    if(e.lower.includes(q)){ matches.push(e); if(matches.length >= 30) break; }
+  }
+  if(!matches.length){ $sr.classList.add('hidden'); return; }
+  for(const m of matches){
+    const div = document.createElement('div');
+    div.className = 'sr-item';
+    div.innerHTML = `<span class="name">${escapeHTML(m.label)}</span><span class="yrs">${m.year || ''}</span>`;
+    div.addEventListener('mousedown', e => { e.preventDefault(); setProband(m.id); $search.value = m.label; $sr.classList.add('hidden'); });
+    $sr.appendChild(div);
+  }
+  $sr.classList.remove('hidden');
+}
+$search.addEventListener('input', e => runSearch(e.target.value));
+$search.addEventListener('focus', e => { if(e.target.value) runSearch(e.target.value); });
+$search.addEventListener('blur',  e => setTimeout(() => $sr.classList.add('hidden'), 150));
+
+/* ---------- Proband hover popover ---------- */
+const $popover = document.getElementById('proband-popover');
+const $ppBody  = document.getElementById('pp-body');
+let popoverOpenTimer = null, popoverCloseTimer = null, popoverAnchor = null;
+
+$popover.addEventListener('mouseenter', () => { clearTimeout(popoverCloseTimer); popoverCloseTimer = null; });
+$popover.addEventListener('mouseleave', schedulePopoverClose);
+
+function schedulePopoverOpen(anchorEl, probandId){
+  clearTimeout(popoverCloseTimer); popoverCloseTimer = null;
+  clearTimeout(popoverOpenTimer);
+  popoverOpenTimer = setTimeout(() => openProbandPopover(anchorEl, probandId), 220);
+}
+function schedulePopoverClose(){
+  clearTimeout(popoverOpenTimer); popoverOpenTimer = null;
+  clearTimeout(popoverCloseTimer);
+  popoverCloseTimer = setTimeout(() => hideProbandPopover(false), 180);
+}
+function hideProbandPopover(immediate){
+  clearTimeout(popoverOpenTimer); popoverOpenTimer = null;
+  clearTimeout(popoverCloseTimer); popoverCloseTimer = null;
+  $popover.classList.remove('open');
+  popoverAnchor = null;
+}
+
+function relationsFor(probandId){
+  const indis = STATE.data?.indis, fams = STATE.data?.fams;
+  if(!indis || !fams) return { spouses: [], children: [] };
+  const p = indis.get(probandId);
+  if(!p) return { spouses: [], children: [] };
+  const spouses = [], children = [], seenSp = new Set(), seenCh = new Set();
+  for(const fId of p.fams || []){
+    const fam = fams.get(fId);
+    if(!fam) continue;
+    const spouseId = fam.husb === probandId ? fam.wife : fam.husb;
+    if(spouseId && !seenSp.has(spouseId)){
+      const sp = indis.get(spouseId);
+      if(sp){ seenSp.add(spouseId); spouses.push(sp); }
+    }
+    for(const cid of fam.chil || []){
+      if(seenCh.has(cid)) continue;
+      const c = indis.get(cid);
+      if(c){ seenCh.add(cid); children.push(c); }
+    }
+  }
+  // sort children by birth year
+  children.sort((a,b) => (a.birth?.year || 9999) - (b.birth?.year || 9999));
+  return { spouses, children };
+}
+
+function lifespan(p){
+  const b = p.birth?.year || '';
+  const d = p.death?.year || '';
+  if(b && d) return `${b}–${d}`;
+  if(b) return `b. ${b}`;
+  if(d) return `d. ${d}`;
+  return '';
+}
+
+function openProbandPopover(anchorEl, probandId){
+  popoverAnchor = anchorEl;
+  const { spouses, children } = relationsFor(probandId);
+  let html = '';
+  html += `<div class="pp-section"><div class="pp-h">Spouse${spouses.length === 1 ? '' : 's'}</div>`;
+  if(spouses.length === 0){
+    html += `<div class="pp-empty">No spouse recorded</div>`;
+  } else {
+    for(const sp of spouses){
+      const sexClass = sp.sex === 'M' ? 'male' : sp.sex === 'F' ? 'female' : '';
+      html += `<div class="pp-item" data-id="${escapeHTML(sp.id)}"><span><span class="pp-sex ${sexClass}"></span>${escapeHTML(sp.name.full || '(unknown)')}</span><span class="pp-yr">${escapeHTML(lifespan(sp))}</span></div>`;
+    }
+  }
+  html += `</div>`;
+  html += `<div class="pp-section"><div class="pp-h">${children.length === 1 ? 'Child' : 'Children'}${children.length ? ` (${children.length})` : ''}</div>`;
+  if(children.length === 0){
+    html += `<div class="pp-empty">No children recorded</div>`;
+  } else {
+    for(const c of children){
+      const sexClass = c.sex === 'M' ? 'male' : c.sex === 'F' ? 'female' : '';
+      html += `<div class="pp-item" data-id="${escapeHTML(c.id)}"><span><span class="pp-sex ${sexClass}"></span>${escapeHTML(c.name.full || '(unknown)')}</span><span class="pp-yr">${escapeHTML(lifespan(c))}</span></div>`;
+    }
+  }
+  html += `</div>`;
+  $ppBody.innerHTML = html;
+
+  $ppBody.querySelectorAll('.pp-item').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const id = el.dataset.id;
+      if(id) setProband(id);
+    });
+  });
+
+  // Position above the anchor (or below if not enough space).
+  $popover.classList.add('open');           // make measurable
+  const r = anchorEl.getBoundingClientRect();
+  const pw = $popover.offsetWidth;
+  const ph = $popover.offsetHeight;
+  let x = r.left + r.width/2 - 28; // align arrow under center-ish
+  x = Math.max(8, Math.min(window.innerWidth - pw - 8, x));
+  let y = r.top - ph - 10;
+  let below = false;
+  if(y < 8){ y = r.bottom + 10; below = true; }
+  $popover.style.left = x + 'px';
+  $popover.style.top  = y + 'px';
+  $popover.classList.toggle('below', below);
+  // Place the arrow under the proband card center
+  const arrow = $popover.querySelector('.pp-arrow');
+  const arrowX = Math.max(10, Math.min(pw - 20, r.left + r.width/2 - x - 5));
+  arrow.style.left = arrowX + 'px';
+}
+
+// Hide popover on pan/zoom (would otherwise drift off the card).
+// Note: only `wheel` here — using `mousedown` would close the popover before a click on
+// one of its items could register (mousedown precedes click; once display:none the click is dropped).
+document.getElementById('stage').addEventListener('wheel', () => hideProbandPopover(true), {passive:true});
+// Dismiss on outside click (but not on the popover or proband card itself)
+document.addEventListener('mousedown', e => {
+  if(!$popover.classList.contains('open')) return;
+  if($popover.contains(e.target)) return;
+  if(popoverAnchor && popoverAnchor.contains(e.target)) return;
+  hideProbandPopover(true);
+});
+
+function setProband(id){
+  STATE.probandId = id;
+  hideProbandPopover(true);
+  render();
+  setTimeout(fitToView, 30);
+}
+
+/* ---------- file loading ---------- */
+function pickProband(indis){
+  // Prefer the first INDI with both birth and at least one FAMC, otherwise first INDI.
+  for(const [id, p] of indis){
+    if(p.famc && p.famc.length) return id;
+  }
+  return indis.keys().next().value;
+}
+
+async function loadGedcomText(text, sourceLabel){
+  const data = parseGedcom(text);
+  STATE.data = data;
+  STATE.fileMeta = sourceLabel;
+  document.getElementById('file-meta').textContent =
+    `${sourceLabel} • ${data.indis.size} people, ${data.fams.size} families`;
+  buildSearchIndex();
+  $search.disabled = false;
+  $search.placeholder = 'Search by name…';
+  STATE.probandId = pickProband(data.indis);
+  $drop.classList.add('hidden');
+  buildGenTable();
+  render();
+  setTimeout(fitToView, 50);
+}
+
+document.getElementById('btn-pick').addEventListener('click', () => $fileInput.click());
+document.getElementById('btn-load').addEventListener('click', () => $fileInput.click());
+$fileInput.addEventListener('change', async e => {
+  const f = e.target.files?.[0]; if(!f) return;
+  const text = await f.text();
+  loadGedcomText(text, f.name);
+});
+
+document.getElementById('btn-sample').addEventListener('click', async () => {
+  const r = await fetch('sample.ged');
+  const text = await r.text();
+  loadGedcomText(text, 'sample.ged');
+});
+
+// drag-drop on stage
+['dragover','dragenter'].forEach(ev =>
+  $stage.addEventListener(ev, e => { e.preventDefault(); $drop.classList.remove('hidden'); $drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev =>
+  $stage.addEventListener(ev, e => { e.preventDefault(); $drop.classList.remove('over'); }));
+$stage.addEventListener('drop', async e => {
+  const f = e.dataTransfer?.files?.[0]; if(!f) return;
+  const text = await f.text();
+  loadGedcomText(text, f.name);
+});
+$drop.addEventListener('dragover',  e => { e.preventDefault(); $drop.classList.add('over'); });
+$drop.addEventListener('dragleave', e => { $drop.classList.remove('over'); });
+$drop.addEventListener('drop', async e => {
+  e.preventDefault();
+  const f = e.dataTransfer?.files?.[0]; if(!f) return;
+  const text = await f.text();
+  loadGedcomText(text, f.name);
+});
+
+/* ---------- auto-load sample on first run ---------- */
+(async () => {
+  try{
+    const r = await fetch('sample.ged');
+    if(r.ok){
+      const text = await r.text();
+      loadGedcomText(text, 'sample.ged');
+    }
+  } catch(e){ /* leave dropzone visible */ }
+})();
+</script>
+</body>
+</html>
