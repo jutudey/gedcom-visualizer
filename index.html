@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="nb">
 <head>
 <meta charset="utf-8" />
-<title>Ancestor Tree</title>
+<title>Stamtavle</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
   :root{
@@ -83,6 +83,8 @@
   .toggle input:checked{background:var(--ink)}
   .toggle input::before{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;background:var(--bg);border-radius:50%;transition:transform .15s}
   .toggle input:checked::before{transform:translateX(12px)}
+  .toggle input:disabled{opacity:0.45;cursor:default}
+  .toggle:has(input:disabled){cursor:default;opacity:0.55}
 
   /* search dropdown */
   .search-wrap{position:relative}
@@ -129,6 +131,28 @@
   .modal .gentable{grid-template-columns:22px repeat(6,72px) 28px;gap:8px 6px;font-size:12px}
   .modal .gentable input[type="number"]{font-size:12px;padding:5px 6px}
 
+  /* stacked-gen arm sliders (sidebar mirror of modal ARM column) */
+  #sidebar-arm-sliders{margin-top:10px}
+  #sidebar-arm-sliders .sidebar-arm-empty{font-size:11px;color:var(--ink-faint);line-height:1.35}
+  #sidebar-arm-sliders .sidebar-arm-row{margin-bottom:0}
+  #sidebar-arm-sliders .sidebar-arm-row input[type="range"]{height:18px;padding:0}
+
+  #sidebar-per-gen-layout{margin-top:16px;margin-bottom:4px;display:flex;flex-direction:column;gap:0}
+  #sidebar-per-gen-layout .sidebar-gen-panel{
+    border-top:1px solid var(--hairline);
+    padding-top:12px;margin-top:12px;
+  }
+  #sidebar-per-gen-layout .sidebar-gen-panel:first-child{
+    border-top:none;padding-top:0;margin-top:0;
+  }
+  #sidebar-per-gen-layout .sidebar-gen-h{
+    font-size:11px;font-weight:600;letter-spacing:0.02em;text-transform:none;color:var(--ink-soft);
+    margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--rule-soft);
+  }
+  #sidebar-per-gen-layout .sidebar-gen-panel .field{margin-bottom:8px}
+  #sidebar-per-gen-layout .sidebar-gen-panel .field:last-child{margin-bottom:0}
+  #sidebar-per-gen-layout input[type="range"]{height:18px;padding:0}
+
   /* ---------- nodes (in svg foreignObject) ---------- */
   .node-card{
     width:100%;height:100%;
@@ -149,6 +173,8 @@
   .node-card:hover{border-color:var(--ink-soft)}
   .node-card .nm{font-weight:500;color:var(--ink);overflow-wrap:break-word;hyphens:auto}
   .node-card .yr{color:var(--ink);font-variant-numeric:tabular-nums;margin-top:2px;font-size:0.85em;text-align:right}
+  .node-card .yr.yr-full{font-variant-numeric:normal;font-size:0.78em;line-height:1.25;word-break:break-word}
+  .node-card .gift{color:var(--ink-soft);font-size:0.78em;line-height:1.25;text-align:right;margin-top:2px;word-break:break-word}
   .node-card .sym{display:none}
 
   .gen-header{font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:0.08em;font-weight:500}
@@ -172,13 +198,13 @@
 <div id="app">
   <div id="stage">
     <div id="topbar">
-      <div class="pill"><span class="dot"></span>Proband: <b id="proband-name">—</b></div>
-      <div class="pill" id="count-pill" style="display:none">Showing <b id="count-shown">0</b> of <b id="count-total">0</b> ancestors</div>
+      <div class="pill"><span class="dot"></span>Fokusperson: <b id="proband-name">—</b></div>
+      <div class="pill" id="count-pill" style="display:none">Viser <b id="count-shown">0</b> av <b id="count-total">0</b> aner</div>
       <div class="topbar-spacer"></div>
-      <button class="iconbtn" id="btn-fit" title="Fit to view (F)">⊡ Fit</button>
-      <button class="iconbtn" id="btn-recenter" title="Recenter (R)">⊙ Recenter</button>
-      <button class="iconbtn" id="btn-png" title="Export PNG">↓ PNG</button>
-      <button class="iconbtn" id="btn-pdf" title="Export PDF (A4)">↓ PDF</button>
+      <button class="iconbtn" id="btn-fit" title="Tilpass visning (F)">⊡ Tilpass</button>
+      <button class="iconbtn" id="btn-recenter" title="Sentrer (R)">⊙ Sentrer</button>
+      <button class="iconbtn" id="btn-png" title="Eksporter PNG">↓ PNG</button>
+      <button class="iconbtn" id="btn-pdf" title="Eksporter PDF (A4)">↓ PDF</button>
     </div>
     <div id="viewport"></div>
     <div id="proband-popover">
@@ -189,13 +215,13 @@
 
     <div id="drop">
       <div class="dz">
-        <h1>Ancestor Tree Visualizer</h1>
-        <p>Drop a <code>.ged</code> file to render the ancestor tree.</p>
+        <h1>Stamtavlevisning</h1>
+        <p>Slipp en <code>.ged</code>-fil her for å tegne forfedre-treet.</p>
         <div class="row">
-          <button class="btn primary" id="btn-pick">Choose .ged file…</button>
-          <button class="btn ghost" id="btn-sample">Use sample file</button>
+          <button class="btn primary" id="btn-pick">Velg .ged-fil …</button>
+          <button class="btn ghost" id="btn-sample">Bruk eksempelfil</button>
         </div>
-        <div class="hint">GEDCOM 5.5 / 5.5.1 • parsed in your browser</div>
+        <div class="hint">GEDCOM 5.5 / 5.5.1 • tolkes i nettleseren din</div>
       </div>
       <input type="file" id="file-input" accept=".ged,.GED,text/plain" hidden>
     </div>
@@ -203,66 +229,77 @@
 
   <aside>
     <header>
-      <h2>Ancestor Tree</h2>
-      <div class="file-meta" id="file-meta">No file loaded</div>
-      <button class="btn ghost" id="btn-load" style="margin-top:8px;width:100%;justify-content:center;font-size:11px">Load .ged file…</button>
+      <h2>Stamtavle</h2>
+      <div class="file-meta" id="file-meta">Ingen fil lastet</div>
+      <button class="btn ghost" id="btn-load" style="margin-top:8px;width:100%;justify-content:center;font-size:11px">Last inn .ged-fil …</button>
     </header>
 
     <div class="section">
-      <h3>Proband</h3>
+      <h3>Fokusperson</h3>
       <div class="field search-wrap">
-        <input type="search" id="search" placeholder="Search by name…" autocomplete="off" disabled>
+        <input type="search" id="search" placeholder="Søk på navn …" autocomplete="off" disabled>
         <div class="search-results hidden" id="search-results"></div>
       </div>
     </div>
 
     <div class="section">
-      <h3>Generations</h3>
+      <h3>Generasjoner</h3>
       <div class="field">
-        <div class="label-row"><span>Depth</span><span class="v"><span id="gen-val">5</span> generations</span></div>
+        <div class="label-row"><span>Dybde</span><span class="v"><span id="gen-val">5</span> generasjoner</span></div>
         <input type="range" id="gen-slider" min="2" max="25" step="1" value="5">
       </div>
       <div class="field">
-        <label class="toggle"><input type="checkbox" id="show-years" checked><span>Show birth/death years</span></label>
+        <div class="label-row"><span>Komprimerte generasjoner</span><span class="v"><span id="compact-val">0</span></span></div>
+        <input type="range" id="compact-slider" min="0" max="24" step="1" value="0" title="Antall øverste rader med stabling (↕) i layout-panelet">
       </div>
       <div class="field">
-        <label class="toggle"><input type="checkbox" id="color-sex"><span>Tint cards by sex</span></label>
+        <label class="toggle"><input type="checkbox" id="show-years" checked><span>Vis fødsels- og dødsår</span></label>
       </div>
       <div class="field">
-        <label class="toggle"><input type="checkbox" id="show-spouses" checked><span>Show spouses (proband only)</span></label>
+        <label class="toggle"><input type="checkbox" id="birthdeath-full-dates" checked><span>Vis fulle fødsels- og dødsdatoer</span></label>
+      </div>
+      <div class="field">
+        <label class="toggle"><input type="checkbox" id="color-sex" checked><span>Fargelegg kort etter kjønn</span></label>
+      </div>
+      <div class="field">
+        <label class="toggle"><input type="checkbox" id="show-spouses" checked><span>Vis ektefeller (kun fokusperson)</span></label>
+      </div>
+      <div class="field">
+        <label class="toggle"><input type="checkbox" id="show-wedding-date" checked><span>Vielsesdato</span></label>
       </div>
     </div>
 
     <div class="section">
-      <h3>Per-generation layout</h3>
-      <button class="btn ghost" id="btn-open-gen" style="width:100%;justify-content:center">Open layout panel…</button>
+      <h3>Layout per generasjon</h3>
+      <button class="btn ghost" id="btn-open-gen" style="width:100%;justify-content:center">Åpne layout-panel …</button>
+      <div id="sidebar-arm-sliders" class="sidebar-arm-sliders" aria-live="polite"></div>
+      <div id="sidebar-per-gen-layout" aria-live="polite"></div>
     </div>
 
     <div class="section" style="font-size:11px;color:var(--ink-faint);border-bottom:none">
       <div style="display:flex;flex-wrap:wrap;gap:6px 12px">
-        <span><span class="kbd">drag</span> pan</span>
-        <span><span class="kbd">wheel</span> zoom</span>
-        <span><span class="kbd">F</span> fit</span>
-        <span><span class="kbd">R</span> reset</span>
+        <span><span class="kbd">dra</span> panorér</span>
+        <span><span class="kbd">hjul</span> zoom</span>
+        <span><span class="kbd">F</span> tilpass</span>
+        <span><span class="kbd">R</span> sentrer</span>
       </div>
     </div>
   </aside>
 </div>
 
 <div class="modal-backdrop" id="gen-modal">
-  <div class="modal" role="dialog" aria-label="Per-generation layout">
-    <h3>Per-generation layout</h3>
+  <div class="modal" role="dialog" aria-label="Layout per generasjon">
+    <h3>Layout per generasjon</h3>
     <div id="gentable" class="gentable"></div>
     <div class="row-end">
-      <button class="btn ghost" id="btn-reset-gen">Reset to defaults</button>
-      <button class="btn primary" id="btn-close-gen">Done</button>
+      <button class="btn ghost" id="btn-reset-gen">Tilbakestill standard</button>
+      <button class="btn primary" id="btn-close-gen">Ferdig</button>
     </div>
   </div>
 
 <script>
 /* ============================================================
-   GEDCOM Ancestor Tree Visualizer
-   single-file, no dependencies
+   Stamtavlevisning (GEDCOM) — én fil, ingen avhengigheter
    ============================================================ */
 
 /* ---------- 1. GEDCOM parser ---------- */
@@ -359,7 +396,7 @@ function parseName(value){
 
 function parseIndi(rec){
   const nameNode = getChild(rec, 'NAME');
-  const name = nameNode ? parseName(nameNode.value) : { full: '(unknown)', given:'', surname:'' };
+  const name = nameNode ? parseName(nameNode.value) : { full: '(ukjent)', given:'', surname:'' };
   const sex = (getChild(rec, 'SEX')?.value || '').trim().toUpperCase();
   const birt = parseEvent(getChild(rec, 'BIRT'));
   const deat = parseEvent(getChild(rec, 'DEAT'));
@@ -631,8 +668,10 @@ const STATE = {
   probandId: null,
   maxGens: 5,
   showYears: true,
-  colorSex: false,
+  fullBirthDeathDates: true,
+  colorSex: true,
   showSpouses: true,
+  showWeddingDate: true,
   // per-gen (length = max possible 25)
   colWidth:   [180, 170, 165, 160, 155, 150, 145, 140, 135, 130, 125, 120, 115, 112, 110, 108, 106, 104, 102, 100, 100, 100, 100, 100, 100],
   nodeW:      [158, 148, 143, 138, 133, 128, 123, 118, 113, 108, 103,  98,  93,  90,  88,  86,  84,  82,  80,  78,  78,  78,  78,  78,  78],
@@ -650,6 +689,18 @@ const $stage = document.getElementById('stage');
 const $vp    = document.getElementById('viewport');
 const $drop  = document.getElementById('drop');
 const $fileInput = document.getElementById('file-input');
+
+/** Visningsnavn for generasjonskolonne g (0 = fokusperson). */
+function generationTierLabel(g){
+  switch(g){
+    case 0: return 'Fokusperson';
+    case 1: return 'Foreldre';
+    case 2: return 'Besteforeldre';
+    case 3: return 'Oldeforeldre';
+    case 4: return 'Tippoldeforeldre';
+    default: return `Generasjon ${g}`;
+  }
+}
 
 function render(){
   if(!STATE.data || !STATE.probandId){ return; }
@@ -699,7 +750,7 @@ function render(){
     t.style.fill = 'oklch(0.62 0.01 80)';
     t.style.font = '500 10px ui-sans-serif,system-ui,sans-serif';
     t.style.letterSpacing = '0.08em';
-    t.textContent = g === 0 ? 'PROBAND' : g === 1 ? 'PARENTS' : g === 2 ? 'GRANDPARENTS' : `GEN ${g}`;
+    t.textContent = generationTierLabel(g);
     svg.appendChild(t);
   }
 
@@ -798,6 +849,44 @@ function render(){
   applyTransform();
 }
 
+function firstMarriageDateString(personId){
+  const fams = STATE.data?.fams, indis = STATE.data?.indis;
+  if(!fams || !indis) return '';
+  const p = indis.get(personId);
+  if(!p?.fams?.length) return '';
+  for(const fId of p.fams){
+    const m = fams.get(fId)?.marr;
+    if(!m) continue;
+    const raw = (m.date || '').replace(/\s+/g, ' ').trim();
+    if(raw) return raw;
+    if(m.year != null) return String(m.year);
+  }
+  return '';
+}
+
+function birthDeathRowHTML(p){
+  if(!STATE.showYears) return '';
+  const yrCls = STATE.fullBirthDeathDates ? 'yr yr-full' : 'yr';
+  const yearOnly = !STATE.fullBirthDeathDates;
+  if(yearOnly){
+    const by = p.birth?.year ?? '';
+    const dy = p.death?.year ?? '';
+    if(!by && !dy) return '';
+    return `<div class="${yrCls}">${by || '?'}–${dy || (by && !dy ? '' : '?')}</div>`;
+  }
+  function part(ev){
+    if(!ev) return '';
+    const raw = (ev.date || '').replace(/\s+/g, ' ').trim();
+    if(raw) return escapeHTML(raw);
+    if(ev.year != null) return escapeHTML(String(ev.year));
+    return '';
+  }
+  const bStr = part(p.birth);
+  const dStr = part(p.death);
+  if(!bStr && !dStr) return '';
+  return `<div class="${yrCls}">${bStr || '?'}–${dStr || (bStr && !dStr ? '' : '?')}</div>`;
+}
+
 function renderNodeHTML(node){
   const p = node.person;
   const sex = p.sex === 'M' ? 'male' : p.sex === 'F' ? 'female' : '';
@@ -807,14 +896,12 @@ function renderNodeHTML(node){
   if(isProband) cls.push('proband');
 
   // wrap name to char limit (soft — we set CSS that wraps; the limit governs width logic upstream)
-  const nm = escapeHTML(p.name.full || '(unknown)');
+  const nm = escapeHTML(p.name.full || '(ukjent)');
   let html = `<div class="${cls.join(' ')}" style="font-size:${nodeFontSize(node.gen)}px"><div class="nm">${nm}</div>`;
-  if(STATE.showYears){
-    const by = p.birth?.year ?? '';
-    const dy = p.death?.year ?? '';
-    if(by || dy){
-      html += `<div class="yr">${by || '?'}–${dy || (by && !dy ? '' : '?')}</div>`;
-    }
+  html += birthDeathRowHTML(p);
+  if(isProband && STATE.showWeddingDate){
+    const md = firstMarriageDateString(p.id);
+    if(md) html += `<div class="gift">Gift: ${escapeHTML(md)}</div>`;
   }
   html += `</div>`;
   return html;
@@ -933,6 +1020,8 @@ function buildExportSVG(){
     .node-card.proband{border-color:oklch(0.55 0.13 145); border-width:1.5px}
     .node-card .nm{font-weight:500; overflow-wrap:break-word}
     .node-card .yr{color:oklch(0.62 0.01 80); margin-top:2px; font-size:0.85em; font-variant-numeric:tabular-nums}
+    .node-card .yr.yr-full{font-variant-numeric:normal;font-size:0.78em;line-height:1.25;word-break:break-word}
+    .node-card .gift{color:oklch(0.45 0.01 80);font-size:0.78em;line-height:1.25;text-align:right;margin-top:2px;word-break:break-word}
   `;
   clone.insertBefore(style, clone.firstChild);
   return new XMLSerializer().serializeToString(clone);
@@ -949,8 +1038,8 @@ function downloadBlob(blob, filename){
 
 async function exportPNG(){
   const xml = buildExportSVG();
-  if(!xml){ alert('Nothing to export yet — load a GEDCOM and pick a proband.'); return; }
-  const baseName = (STATE.data?.indis.get(STATE.probandId)?.name.full || 'tree').replace(/\s+/g,'_');
+  if(!xml){ alert('Ingenting å eksportere ennå — last inn en GEDCOM og velg en fokusperson.'); return; }
+  const baseName = (STATE.data?.indis.get(STATE.probandId)?.name.full || 'tre').replace(/\s+/g,'_');
 
   // Try rasterizing to PNG. SVGs with <foreignObject> can taint the canvas
   // in some browser/sandbox contexts, so we fall back to downloading the SVG.
@@ -978,7 +1067,7 @@ async function exportPNG(){
       try { canvas.toBlob(b => b ? res(b) : rej(new Error('toBlob returned null')), 'image/png'); }
       catch(e){ rej(e); }
     });
-    downloadBlob(blob, `ancestor-tree-${baseName}.png`);
+    downloadBlob(blob, `stamtavle-${baseName}.png`);
     return;
   } catch(err){
     console.warn('PNG rasterization failed, falling back to SVG:', err);
@@ -987,14 +1076,14 @@ async function exportPNG(){
   // Fallback: download the SVG directly. It opens in any browser and
   // can be converted to PNG offline.
   const svgBlob = new Blob(['<?xml version="1.0" standalone="no"?>\n', xml], { type:'image/svg+xml;charset=utf-8' });
-  downloadBlob(svgBlob, `ancestor-tree-${baseName}.svg`);
+  downloadBlob(svgBlob, `stamtavle-${baseName}.svg`);
 }
 
 /* ---------- 6b. PDF export ---------- */
 document.getElementById('btn-pdf').addEventListener('click', exportPDF);
 function exportPDF(){
   const xml = buildExportSVG();
-  if(!xml){ alert('Nothing to export yet — load a GEDCOM and pick a proband.'); return; }
+  if(!xml){ alert('Ingenting å eksportere ennå — last inn en GEDCOM og velg en fokusperson.'); return; }
 
   const tw = STATE.layoutWidth;
   const th = STATE.layoutHeight;
@@ -1027,10 +1116,90 @@ function exportPDF(){
 }
 
 /* ---------- 7. Sidebar wiring ---------- */
+function syncGentableArmInput(g){
+  const cell = document.querySelector(`#gentable input[type="range"][data-k="armLen"][data-g="${g}"]`);
+  if(!cell) return;
+  cell.value = STATE.armLen[g];
+  const wrap = cell.parentElement;
+  if(wrap){
+    wrap.title = `Armlengde: ${STATE.armLen[g]} px`;
+  }
+}
+
+function syncGentableNumberInput(g, k){
+  const el = document.querySelector(`#gentable input[type="number"][data-k="${k}"][data-g="${g}"]`);
+  if(el) el.value = STATE[k][g];
+}
+
+function syncSidebarPerGenField(g, k){
+  const host = document.getElementById('sidebar-per-gen-layout');
+  if(!host) return;
+  const inp = host.querySelector(`input[type="range"][data-k="${k}"][data-g="${g}"]`);
+  const sp = host.querySelector(`span[data-wh="${k}"][data-g="${g}"]`);
+  if(inp) inp.value = STATE[k][g];
+  if(sp) sp.textContent = String(STATE[k][g]);
+}
+
+function buildSidebarPerGenLayout(){
+  const host = document.getElementById('sidebar-per-gen-layout');
+  if(!host) return;
+  const parts = [];
+  for(let g=0; g<STATE.maxGens; g++){
+    const w = STATE.nodeW[g], h = STATE.nodeHeight[g], cw = STATE.colWidth[g];
+    parts.push(
+      `<div class="sidebar-gen-panel" data-g="${g}">` +
+        `<div class="sidebar-gen-h">${escapeHTML(generationTierLabel(g))}</div>` +
+        `<div class="field">` +
+          `<div class="label-row"><span>Bredde (kort)</span><span class="v"><span data-wh="nodeW" data-g="${g}">${w}</span> px</span></div>` +
+          `<input type="range" data-k="nodeW" data-g="${g}" min="40" max="320" step="2" value="${w}" title="Kortbredde: ${w} px">` +
+        `</div>` +
+        `<div class="field">` +
+          `<div class="label-row"><span>Høyde (kort)</span><span class="v"><span data-wh="nodeHeight" data-g="${g}">${h}</span> px</span></div>` +
+          `<input type="range" data-k="nodeHeight" data-g="${g}" min="20" max="200" step="2" value="${h}" title="Korthøyde: ${h} px">` +
+        `</div>` +
+        `<div class="field">` +
+          `<div class="label-row"><span>Mellomrom til neste</span><span class="v"><span data-wh="colWidth" data-g="${g}">${cw}</span> px</span></div>` +
+          `<input type="range" data-k="colWidth" data-g="${g}" min="60" max="320" step="5" value="${cw}" title="Kolonnesteg (avstand til neste generasjon): ${cw} px">` +
+        `</div>` +
+      `</div>`
+    );
+  }
+  host.innerHTML = parts.join('');
+}
+
+function syncSidebarArmRow(g){
+  const host = document.getElementById('sidebar-arm-sliders');
+  if(!host) return;
+  const inp = host.querySelector(`input[data-k="armLen"][data-g="${g}"]`);
+  if(!inp) return;
+  inp.value = STATE.armLen[g];
+  const v = host.querySelector(`[data-arm-val="${g}"]`);
+  if(v) v.textContent = STATE.armLen[g] + 'px';
+  inp.title = `Lengde: ${STATE.armLen[g]} px`;
+}
+
+function buildSidebarArmSliders(){
+  const host = document.getElementById('sidebar-arm-sliders');
+  if(!host) return;
+  const parts = [];
+  for(let g=0; g<STATE.maxGens - 1; g++){
+    if(!STATE.stack[g]) continue;
+    parts.push(
+      `<div class="field sidebar-arm-row">` +
+        `<div class="label-row"><span title="Juster mellomrom ved stabling (${escapeHTML(generationTierLabel(g))})">Juster mellomrom – ${escapeHTML(generationTierLabel(g))}</span><span class="v" data-arm-val="${g}">${STATE.armLen[g]}px</span></div>` +
+        `<input type="range" data-k="armLen" data-g="${g}" min="-40" max="160" step="1" value="${STATE.armLen[g]}" title="Lengde: ${STATE.armLen[g]} px">` +
+      `</div>`
+    );
+  }
+  host.innerHTML = parts.length
+    ? parts.join('')
+    : `<div class="sidebar-arm-empty">Slå på <span style="color:var(--ink-soft)">stabling (↕)</span> for en generasjon i layout-panelet for å justere armen her.</div>`;
+}
+
 function buildGenTable(){
   const t = document.getElementById('gentable');
   let html = '';
-  html += `<div class="h">G</div><div class="h" title="Box width">W</div><div class="h" title="Box height">H</div><div class="h" title="Column step (horizontal spacing)">Col</div><div class="h">V Gap</div><div class="h">Wrap</div><div class="h" title="Arrow / arm length to next generation">Arm</div><div class="h" title="Stack parents vertically above/below child">↕</div>`;
+  html += `<div class="h" title="Generasjon">G</div><div class="h" title="Kortbredde (px)">B</div><div class="h" title="Korthøyde (px)">H</div><div class="h" title="Kolonnesteg (px)">Kol</div><div class="h" title="Vertikal avstand">V</div><div class="h" title="Tekstbryting (tegn)">Brudd</div><div class="h" title="Armlengde til neste generasjon">Arm</div><div class="h" title="Stabl foreldre vertikalt over/under barn">↕</div>`;
   for(let g=0; g<STATE.maxGens; g++){
     const isLast = g === STATE.maxGens - 1;
     html += `<div class="gen-label">${g}</div>`;
@@ -1041,10 +1210,10 @@ function buildGenTable(){
     html += `<div><input type="number" data-k="wrap"       data-g="${g}" min="6"  max="60"  step="1" value="${STATE.wrap[g]}"></div>`;
     html += isLast
       ? `<div style="text-align:center;color:var(--ink-faint)">—</div>`
-      : `<div title="Arm length: ${STATE.armLen[g]}px"><input type="range" data-k="armLen" data-g="${g}" min="-40" max="160" step="1" value="${STATE.armLen[g]}"></div>`;
+      : `<div title="Armlengde: ${STATE.armLen[g]} px"><input type="range" data-k="armLen" data-g="${g}" min="-40" max="160" step="1" value="${STATE.armLen[g]}"></div>`;
     html += `<div style="display:flex;justify-content:center">` +
       (isLast ? '<span style="color:var(--ink-faint)">—</span>' :
-        `<input type="checkbox" data-k="stack" data-g="${g}" ${STATE.stack[g] ? 'checked' : ''} title="Stack parents of gen ${g} vertically above/below this column" style="accent-color:var(--ink);cursor:pointer">`) +
+        `<input type="checkbox" data-k="stack" data-g="${g}" ${STATE.stack[g] ? 'checked' : ''} title="Stabl foreldre for gen. ${g} vertikalt over/under denne kolonnen" style="accent-color:var(--ink);cursor:pointer">`) +
       `</div>`;
   }
   t.innerHTML = html;
@@ -1053,33 +1222,88 @@ function buildGenTable(){
       const k = inp.dataset.k, g = +inp.dataset.g;
       if(inp.type === 'checkbox'){
         STATE[k][g] = inp.checked;
+        if(k === 'stack'){
+          buildSidebarArmSliders();
+          syncCompactSliderFromStack();
+        }
       } else {
         STATE[k][g] = +inp.value;
-        // Only auto-recalc node height when wrap changes AND user hasn't manually overridden H
-        if(k === 'armLen' && inp.parentElement) inp.parentElement.title = `Arm length: ${inp.value}px`;
+        if(k === 'armLen' && inp.parentElement) inp.parentElement.title = `Armlengde: ${inp.value} px`;
+        if(k === 'armLen') syncSidebarArmRow(g);
+        if(k === 'nodeW' || k === 'nodeHeight' || k === 'colWidth') syncSidebarPerGenField(g, k);
       }
       render();
     };
     inp.addEventListener('input', apply);
     inp.addEventListener('change', apply);
   });
+  buildSidebarArmSliders();
+  buildSidebarPerGenLayout();
+  syncCompactSliderFromStack();
 }
 function estimateNodeHeight(g){
-  // Estimate: each line ~ fontSize * 1.2; assume up to 2 lines of name + 1 line of years.
+  // Estimate: each line ~ fontSize * 1.2; assume up to 2 lines of name + 1–2 lines of dates.
   const fs = nodeFontSize(g);
   const nameLines = STATE.wrap[g] >= 16 ? 2 : 3;
-  const yearLine = STATE.showYears ? 1 : 0;
-  return Math.round(fs * 1.2 * (nameLines + yearLine) + 12);
+  const dateLines = STATE.showYears ? (STATE.fullBirthDeathDates ? 2 : 1) : 0;
+  const giftLine = (g === 0 && STATE.showWeddingDate) ? 1 : 0;
+  return Math.round(fs * 1.2 * (nameLines + dateLines + giftLine) + 12);
+}
+
+function leadingStackCount(){
+  let n = 0;
+  const cap = Math.max(0, STATE.maxGens - 1);
+  for(let g=0; g<cap; g++){
+    if(STATE.stack[g]) n++;
+    else break;
+  }
+  return n;
+}
+
+function syncCompactSliderFromStack(){
+  const n = leadingStackCount();
+  const inp = document.getElementById('compact-slider');
+  const lab = document.getElementById('compact-val');
+  const cap = Math.max(0, STATE.maxGens - 1);
+  if(inp){
+    inp.max = cap;
+    inp.value = String(Math.min(n, cap));
+  }
+  if(lab) lab.textContent = String(Math.min(n, cap));
 }
 
 document.getElementById('gen-slider').addEventListener('input', e => {
   STATE.maxGens = +e.target.value;
   document.getElementById('gen-val').textContent = STATE.maxGens;
+  for(let gg=Math.max(0, STATE.maxGens - 1); gg<25; gg++) STATE.stack[gg]=false;
   buildGenTable();
   render();
 });
+document.getElementById('compact-slider').addEventListener('input', e => {
+  const cap = Math.max(0, STATE.maxGens - 1);
+  const n = Math.max(0, Math.min(cap, +e.target.value || 0));
+  e.target.value = String(n);
+  for(let g=0; g<STATE.maxGens - 1; g++) STATE.stack[g] = g < n;
+  for(let g=STATE.maxGens - 1; g<25; g++) STATE.stack[g]=false;
+  const lab = document.getElementById('compact-val');
+  if(lab) lab.textContent = String(n);
+  buildGenTable();
+  render();
+});
+function syncBirthDeathFullToggle(){
+  const fullInp = document.getElementById('birthdeath-full-dates');
+  const on = document.getElementById('show-years').checked;
+  fullInp.disabled = !on;
+  fullInp.checked = STATE.fullBirthDeathDates;
+}
+
 document.getElementById('show-years').addEventListener('change', e => {
   STATE.showYears = e.target.checked;
+  syncBirthDeathFullToggle();
+  render();
+});
+document.getElementById('birthdeath-full-dates').addEventListener('change', e => {
+  STATE.fullBirthDeathDates = e.target.checked;
   render();
 });
 document.getElementById('color-sex').addEventListener('change', e => {
@@ -1088,6 +1312,10 @@ document.getElementById('color-sex').addEventListener('change', e => {
 });
 document.getElementById('show-spouses').addEventListener('change', e => {
   STATE.showSpouses = e.target.checked;
+  render();
+});
+document.getElementById('show-wedding-date').addEventListener('change', e => {
+  STATE.showWeddingDate = e.target.checked;
   render();
 });
 document.getElementById('btn-open-gen').addEventListener('click', () => {
@@ -1112,6 +1340,47 @@ document.getElementById('btn-reset-gen').addEventListener('click', () => {
   render();
 });
 
+(function initSidebarArmSlidersDelegation(){
+  const host = document.getElementById('sidebar-arm-sliders');
+  if(!host) return;
+  host.addEventListener('input', e => {
+    const inp = e.target;
+    if(inp.tagName !== 'INPUT' || inp.type !== 'range' || inp.dataset.k !== 'armLen') return;
+    const g = +inp.dataset.g;
+    STATE.armLen[g] = +inp.value;
+    const v = inp.closest('.sidebar-arm-row')?.querySelector('[data-arm-val]');
+    if(v) v.textContent = inp.value + 'px';
+    inp.title = `Lengde: ${inp.value} px`;
+    syncGentableArmInput(g);
+    render();
+  });
+})();
+
+(function initSidebarPerGenLayoutDelegation(){
+  const host = document.getElementById('sidebar-per-gen-layout');
+  if(!host) return;
+  host.addEventListener('input', e => {
+    const inp = e.target;
+    if(inp.tagName !== 'INPUT' || inp.type !== 'range') return;
+    const k = inp.dataset.k, g = +inp.dataset.g;
+    if(k !== 'nodeW' && k !== 'nodeHeight' && k !== 'colWidth') return;
+    let v = +inp.value;
+    if(k === 'nodeW') v = Math.max(40, Math.min(320, Math.round(v / 2) * 2));
+    else if(k === 'nodeHeight') v = Math.max(20, Math.min(200, Math.round(v / 2) * 2));
+    else v = Math.max(60, Math.min(320, Math.round(v / 5) * 5));
+    inp.value = String(v);
+    STATE[k][g] = v;
+    const sp = host.querySelector(`span[data-wh="${k}"][data-g="${g}"]`);
+    if(sp) sp.textContent = String(v);
+    inp.title = k === 'nodeW' ? `Kortbredde: ${v} px` : k === 'nodeHeight' ? `Korthøyde: ${v} px` : `Kolonnesteg: ${v} px`;
+    syncGentableNumberInput(g, k);
+    render();
+  });
+})();
+buildSidebarArmSliders();
+buildSidebarPerGenLayout();
+syncCompactSliderFromStack();
+
 /* ---------- search ---------- */
 const $search = document.getElementById('search');
 const $sr     = document.getElementById('search-results');
@@ -1123,7 +1392,7 @@ function buildSearchIndex(){
     const yr = p.birth?.year ?? p.death?.year ?? '';
     searchIndex.push({
       id,
-      label: p.name.full || '(unknown)',
+      label: p.name.full || '(ukjent)',
       lower: (p.name.full || '').toLowerCase(),
       year: yr
     });
@@ -1203,11 +1472,20 @@ function relationsFor(probandId){
 }
 
 function lifespan(p){
-  const b = p.birth?.year || '';
-  const d = p.death?.year || '';
-  if(b && d) return `${b}–${d}`;
-  if(b) return `b. ${b}`;
-  if(d) return `d. ${d}`;
+  const yearOnly = !STATE.showYears || !STATE.fullBirthDeathDates;
+  function part(ev){
+    if(!ev) return '';
+    if(yearOnly) return ev.year != null ? String(ev.year) : '';
+    const raw = (ev.date || '').replace(/\s+/g, ' ').trim();
+    if(raw) return raw;
+    if(ev.year != null) return String(ev.year);
+    return '';
+  }
+  const bStr = part(p.birth);
+  const dStr = part(p.death);
+  if(bStr && dStr) return `${bStr}–${dStr}`;
+  if(bStr) return `f. ${bStr}`;
+  if(dStr) return `d. ${dStr}`;
   return '';
 }
 
@@ -1215,23 +1493,23 @@ function openProbandPopover(anchorEl, probandId){
   popoverAnchor = anchorEl;
   const { spouses, children } = relationsFor(probandId);
   let html = '';
-  html += `<div class="pp-section"><div class="pp-h">Spouse${spouses.length === 1 ? '' : 's'}</div>`;
+  html += `<div class="pp-section"><div class="pp-h">Ektefeller</div>`;
   if(spouses.length === 0){
-    html += `<div class="pp-empty">No spouse recorded</div>`;
+    html += `<div class="pp-empty">Ingen ektefelle registrert</div>`;
   } else {
     for(const sp of spouses){
       const sexClass = sp.sex === 'M' ? 'male' : sp.sex === 'F' ? 'female' : '';
-      html += `<div class="pp-item" data-id="${escapeHTML(sp.id)}"><span><span class="pp-sex ${sexClass}"></span>${escapeHTML(sp.name.full || '(unknown)')}</span><span class="pp-yr">${escapeHTML(lifespan(sp))}</span></div>`;
+      html += `<div class="pp-item" data-id="${escapeHTML(sp.id)}"><span><span class="pp-sex ${sexClass}"></span>${escapeHTML(sp.name.full || '(ukjent)')}</span><span class="pp-yr">${escapeHTML(lifespan(sp))}</span></div>`;
     }
   }
   html += `</div>`;
-  html += `<div class="pp-section"><div class="pp-h">${children.length === 1 ? 'Child' : 'Children'}${children.length ? ` (${children.length})` : ''}</div>`;
+  html += `<div class="pp-section"><div class="pp-h">Barn${children.length ? ` (${children.length})` : ''}</div>`;
   if(children.length === 0){
-    html += `<div class="pp-empty">No children recorded</div>`;
+    html += `<div class="pp-empty">Ingen barn registrert</div>`;
   } else {
     for(const c of children){
       const sexClass = c.sex === 'M' ? 'male' : c.sex === 'F' ? 'female' : '';
-      html += `<div class="pp-item" data-id="${escapeHTML(c.id)}"><span><span class="pp-sex ${sexClass}"></span>${escapeHTML(c.name.full || '(unknown)')}</span><span class="pp-yr">${escapeHTML(lifespan(c))}</span></div>`;
+      html += `<div class="pp-item" data-id="${escapeHTML(c.id)}"><span><span class="pp-sex ${sexClass}"></span>${escapeHTML(c.name.full || '(ukjent)')}</span><span class="pp-yr">${escapeHTML(lifespan(c))}</span></div>`;
     }
   }
   html += `</div>`;
@@ -1297,10 +1575,10 @@ async function loadGedcomText(text, sourceLabel){
   STATE.data = data;
   STATE.fileMeta = sourceLabel;
   document.getElementById('file-meta').textContent =
-    `${sourceLabel} • ${data.indis.size} people, ${data.fams.size} families`;
+    `${sourceLabel} • ${data.indis.size} personer, ${data.fams.size} familier`;
   buildSearchIndex();
   $search.disabled = false;
-  $search.placeholder = 'Search by name…';
+  $search.placeholder = 'Søk på navn …';
   STATE.probandId = pickProband(data.indis);
   $drop.classList.add('hidden');
   buildGenTable();
@@ -1342,6 +1620,8 @@ $drop.addEventListener('drop', async e => {
 });
 
 /* ---------- auto-load sample on first run ---------- */
+syncBirthDeathFullToggle();
+
 (async () => {
   try{
     const r = await fetch('sample.ged');
